@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/beans
+       https://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/aop
+        https://www.springframework.org/schema/aop/spring-aop.xsd
+        http://www.springframework.org/schema/tx
+        https://www.springframework.org/schema/tx/spring-tx.xsd
+       http://www.springframework.org/schema/context
+        https://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc.xsd">
+
+<!--    spring的配置文件，和业务逻辑有关的-->
+<!--    1.首先要配置要扫描的包，这里和springmvc配置文件不同的是，这里只不需要扫描Controller注解-->
+    <context:component-scan base-package="com.fisheep">
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+
+<!--    2.数据源配置-->
+<!--        这里需要说明properties文件-->
+    <context:property-placeholder location="classpath:dbconfig.properties"></context:property-placeholder>
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="${jdbc.driver}"></property>
+        <property name="jdbcUrl" value="${jdbc.url}"></property>
+        <property name="user" value="${jdbc.user}"></property>
+        <property name="password" value="${jdbc.password}"></property>
+    </bean>
+<!--3.配置和mybatis的整合-->
+
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="configLocation" value="classpath:mybatis.xml"></property>
+        <property name="dataSource" ref="dataSource"></property>
+<!--        mapperlocations指定mybatis的mapper文件所在位置,(因为这里使用的是mybatis的配置文件形式，没有用mybatis的注解)-->
+        <property name="mapperLocations" value="classpath:mapper/*.xml"></property>
+    </bean>
+<!--    注入一个批量插入的sqlSession对象-->
+    <bean id="batchSqlSessionTemplate" class="org.mybatis.spring.SqlSessionTemplate">
+        <constructor-arg name="sqlSessionFactory" ref="sqlSessionFactory"></constructor-arg>
+<!--        这里指定批量插入-->
+        <constructor-arg name="executorType" value="BATCH"></constructor-arg>
+    </bean>
+<!--    配置扫描器，将mybatis接口的实现（代理对象）加入到IOC容器里面-->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+<!--        因为没有用注解，所以这里需要这样，扫描所有的dao接口-->
+        <property name="basePackage" value="com.fisheep.crud.dao"></property>
+    </bean>
+    <!--    3.事务控制配置-->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+<!--        事务管理器要控制住项目中用的数据源-->
+        <property name="dataSource" ref="dataSource"></property>
+    </bean>
+<!--    开启事务控制有两种方法：
+            1.开启基于注解的事务-->
+<!--        2.开启基于xml的事务，一般使用这个基于xml配置的-->
+    <aop:config>
+<!--        配置切入点表达式，表示哪些方法可能要对他进行事务控制-->
+        <aop:pointcut id="pt1" expression="execution(* com.fisheep.crud.service..*(..))"/>
+<!--        配置用哪些增强，对哪些切入点增强-->
+        <aop:advisor advice-ref="txAdvice" pointcut-ref="pt1"></aop:advisor>
+    </aop:config>
+<!--    这里就指定切入点里面的哪些方法需要事务控制，以及配置事务如何切入（就是需要怎么样的事务控制）,也即具体哪些方法要增强
+         transaction-manager表示使用哪个事务管理器来控制-->
+    <tx:advice id="txAdvice" transaction-manager="transactionManager">
+        <tx:attributes>
+            <tx:method name="*"/>
+<!--            配置以get开始的方法，我们把这种开头的方法都为查询方法，所以后面可以做调优，read-only来做-->
+            <tx:method name="get*" read-only="true"/>
+        </tx:attributes>
+    </tx:advice>
+</beans>
